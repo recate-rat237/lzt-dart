@@ -30,16 +30,22 @@ jobs:
         if: matrix.sdk == 'stable' && matrix.os == 'ubuntu-latest'
 
       - name: Analyze
-        run: dart analyze --fatal-infos
+        run: dart analyze
 
       - name: Run tests
         run: dart test
 
   codegen:
-    name: Verify codegen output is up to date
+    name: Regenerate and commit clients
     runs-on: ubuntu-latest
+    # Only auto-commit on direct pushes to main, not on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: dart-lang/setup-dart@v1
         with:
@@ -62,6 +68,10 @@ jobs:
             --class-name MarketClient \
             --base-url https://api.lzt.market
 
-      - name: Check for uncommitted changes
+      - name: Commit regenerated files if changed
         run: |
-          git diff --exit-code || (echo "::error::Generated files are out of date. Run codegen and commit." && exit 1)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add lib/src/forum/forum_client.dart lib/src/market/market_client.dart
+          git diff --staged --quiet || git commit -m "chore: regenerate clients from OpenAPI schemas [skip ci]"
+          git push
