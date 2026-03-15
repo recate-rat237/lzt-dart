@@ -8,7 +8,7 @@ import '../core/base_client.dart';
 ///
 /// Auto-generated from OpenAPI schema.
 class MarketClient extends BaseClient {
-  static const _baseUrl = 'https://prod-api.lzt.market';
+  static const _baseUrl = 'https://api.lzt.market';
 
   MarketClient({
     required super.token,

@@ -8,7 +8,7 @@ import '../core/base_client.dart';
 ///
 /// Auto-generated from OpenAPI schema.
 class ForumClient extends BaseClient {
-  static const _baseUrl = 'https://prod-api.lolz.live';
+  static const _baseUrl = 'https://api.lzt.market';
 
   ForumClient({
     required super.token,
