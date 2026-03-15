@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }} / Dart ${{ matrix.sdk }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        sdk: [stable, beta]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+        if: matrix.sdk == 'stable' && matrix.os == 'ubuntu-latest'
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Run tests
+        run: dart test
+
+  codegen:
+    name: Verify codegen output is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Regenerate clients
+        run: |
+          dart run codegen/generate.dart \
+            --schema schemas/forum.json \
+            --output lib/src/forum/forum_client.dart \
+            --class-name ForumClient \
+            --base-url https://api.lzt.market
+
+          dart run codegen/generate.dart \
+            --schema schemas/market.json \
+            --output lib/src/market/market_client.dart \
+            --class-name MarketClient \
+            --base-url https://api.lzt.market
+
+      - name: Check for uncommitted changes
+        run: |
+          git diff --exit-code || (echo "::error::Generated files are out of date. Run codegen and commit." && exit 1)

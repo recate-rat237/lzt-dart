@@ -1,0 +1,13 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  exclude:
+    - lib/src/forum/forum_client.dart
+    - lib/src/market/market_client.dart
+
+linter:
+  rules:
+    - prefer_single_quotes
+    - prefer_final_locals
+    - avoid_print
+    - unawaited_futures
