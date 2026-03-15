@@ -2,20 +2,8 @@
 
 Dart API wrapper for Lolzteam Forum & Market. Auto-generated from OpenAPI schemas. Supports async, proxy, and automatic retry on 429/502/503.
 
-[![pub.dev](https://img.shields.io/pub/v/lzt_api.svg)](https://pub.dev/packages/lzt_api)
 [![CI](https://github.com/your-org/lzt-api-dart/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/lzt-api-dart/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-## Installation
-
-```yaml
-dependencies:
-  lzt_api: ^0.1.0
-```
-
-```sh
-dart pub get
-```
 
 ## Quick Start
 
