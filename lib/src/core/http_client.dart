@@ -140,5 +140,52 @@ class LztHttpClient {
     }
   }
 
+  /// Send a multipart/form-data request.
+  /// Fields with List<int> values are sent as binary file parts,
+  /// everything else is sent as form fields.
+  Future<Map<String, dynamic>> multipartRequest(
+    String method,
+    Uri url, {
+    Map<String, dynamic>? fields,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      attempt++;
+      http.Response response;
+      try {
+        final request = http.MultipartRequest(method, url)
+          ..headers.addAll(_headers..remove('Content-Type'));
+
+        if (fields != null) {
+          for (final entry in fields.entries) {
+            final value = entry.value;
+            if (value == null) continue;
+            if (value is List<int>) {
+              request.files.add(http.MultipartFile.fromBytes(
+                entry.key,
+                value,
+                filename: entry.key,
+              ));
+            } else {
+              request.fields[entry.key] = value.toString();
+            }
+          }
+        }
+
+        response = await _inner.send(request).then(http.Response.fromStream);
+      } on SocketException catch (e) {
+        throw LztNetworkError('Network error: \${e.message}');
+      }
+
+      if (_retryStatuses.contains(response.statusCode) && attempt <= maxRetries) {
+        final delay = _resolveDelay(response, attempt);
+        await Future.delayed(delay);
+        continue;
+      }
+
+      return _handleResponse(response);
+    }
+  }
+
   void close() => _inner.close();
 }

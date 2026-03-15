@@ -61,6 +61,20 @@ abstract class BaseClient {
 
   Uri buildUri(String path, Map<String, String>? params);
 
+  /// Send a multipart/form-data request.
+  ///
+  /// [fields] can contain regular values (String, int, bool) and
+  /// binary fields (List<int>) which are sent as file parts.
+  Future<Map<String, dynamic>> multipart(
+    String method,
+    String path, {
+    Map<String, String>? params,
+    Map<String, dynamic>? fields,
+  }) {
+    final uri = buildUri(path, params);
+    return _http.multipartRequest(method, uri, fields: fields);
+  }
+
   /// Release underlying HTTP resources.
   void close() => _http.close();
 }

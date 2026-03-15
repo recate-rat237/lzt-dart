@@ -8,7 +8,7 @@ import '../core/base_client.dart';
 ///
 /// Auto-generated from OpenAPI schema.
 class ForumClient extends BaseClient {
-  static const _baseUrl = 'https://api.lzt.market';
+  static const _baseUrl = 'https://prod-api.lolz.live';
 
   ForumClient({
     required super.token,
@@ -28,7 +28,7 @@ class ForumClient extends BaseClient {
   Future<Map<String, dynamic>> oauthToken({
     Map<String, dynamic>? body,
   }) {
-    return post('/oauth/token', body: body);
+    return multipart('POST', '/oauth/token', fields: body);
   }
 
   /// GET /css — Get CSS
@@ -1430,18 +1430,18 @@ class ForumClient extends BaseClient {
   /// [crop] Selection size.
   Future<Map<String, dynamic>> usersAvatarUpload({
     required String userId,
-    required String avatar,
+    required List<int> avatar,
     int? x,
     int? y,
     int? crop,
   }) {
-    final bodyMap = <String, dynamic>{
+    final multipartFields = <String, dynamic>{
         'avatar': avatar,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
         if (crop != null) 'crop': crop,
     };
-    return post('/users/$userId/avatar', body: bodyMap);
+    return multipart('POST', '/users/$userId/avatar', fields: multipartFields);
   }
 
   /// DELETE /users/{user_id}/avatar — Delete Avatar
@@ -1495,18 +1495,18 @@ class ForumClient extends BaseClient {
   /// [crop] Selection size.
   Future<Map<String, dynamic>> usersBackgroundUpload({
     required String userId,
-    required String background,
+    required List<int> background,
     int? x,
     int? y,
     int? crop,
   }) {
-    final bodyMap = <String, dynamic>{
+    final multipartFields = <String, dynamic>{
         'background': background,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
         if (crop != null) 'crop': crop,
     };
-    return post('/users/$userId/background', body: bodyMap);
+    return multipart('POST', '/users/$userId/background', fields: multipartFields);
   }
 
   /// DELETE /users/{user_id}/background — Delete Background

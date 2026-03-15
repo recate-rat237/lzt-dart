@@ -8,7 +8,7 @@ import '../core/base_client.dart';
 ///
 /// Auto-generated from OpenAPI schema.
 class MarketClient extends BaseClient {
-  static const _baseUrl = 'https://api.lzt.market';
+  static const _baseUrl = 'https://prod-api.lzt.market';
 
   MarketClient({
     required super.token,
@@ -185,7 +185,7 @@ class MarketClient extends BaseClient {
   ///
   /// [daybreak] Number of days the account has been offline.
   ///
-  /// [limit] Has 5 $ limit.
+  /// [limit] Has 5  limit.
   ///
   /// [mafile] Has .mafile (Steam Guard Authenticator).
   ///
@@ -5797,7 +5797,7 @@ class MarketClient extends BaseClient {
   /// Gets steam inventory value. > 📘 This method is rate limited. You can send 20 requests
   /// per minute (3s delay between requests)
   ///
-  /// [link] Link or id of account. Can be [**https://lzt.market/{item-id}/**, **https://steamcommunity.com/id/{steam-name}**, **https://steamcommunity.com/profiles/{steam-id}**, **{steam-id}**].
+  /// [link] Link or id of account. Can be [**https://lzt.market/(item-id)/**, **https://steamcommunity.com/id/(steam-name)**, **https://steamcommunity.com/profiles/(steam-id)**, **(steam-id)**].
   ///
   /// [appId] Application id.
   ///
@@ -7385,7 +7385,7 @@ class MarketClient extends BaseClient {
   /// POST /batch — Batch
   ///
   /// Execute multiple API requests at once (separated by comma). Maximum batch jobs is 10.
-  /// Following methods are unavailable in Batch: - GET /{item_id}/image - /item/fast-sell
+  /// Following methods are unavailable in Batch: - GET /(item_id)/image - /item/fast-sell
   Future<Map<String, dynamic>> batch({
     Map<String, dynamic>? body,
   }) {

@@ -310,7 +310,8 @@ String generateClient({
       for (final match in pathVarRe.allMatches(path)) {
         final varName = match.group(1)!;
         final dartName = toSnakeCamel(varName);
-        final existingIdx = params.indexWhere((p) => p.name == varName || p.dartName == dartName);
+        final safeName = safeDartName(dartName);
+        final existingIdx = params.indexWhere((p) => p.name == varName || p.dartName == safeName || p.dartName == dartName);
         if (existingIdx == -1) {
           // Missing entirely — inject
           params.add(Param(
@@ -343,6 +344,7 @@ String generateClient({
 
       // ── Extract typed body params from requestBody schema ────────────────
       final bodyParams = <Param>[];
+      bool isMultipart = false;
       final isBodyMethod = ['post', 'put', 'patch'].contains(httpMethod);
       if (isBodyMethod && operation.containsKey('requestBody')) {
         final rb = operation['requestBody'];
@@ -350,10 +352,23 @@ String generateClient({
           final content = rb['content'];
           Map? schemaMap;
           if (content is Map) {
-            // prefer application/json, fall back to first entry
-            final jsonContent = content['application/json'] ?? content.values.firstOrNull;
-            if (jsonContent is Map) {
-              schemaMap = jsonContent['schema'] as Map?;
+            // Prefer application/json; fall back to multipart/form-data or first entry
+            Map? selectedContent;
+            if (content.containsKey('application/json')) {
+              selectedContent = content['application/json'] as Map?;
+            } else if (content.containsKey('multipart/form-data')) {
+              selectedContent = content['multipart/form-data'] as Map?;
+              isMultipart = true;
+            } else {
+              final first = content.values.firstOrNull;
+              if (first is Map) selectedContent = first;
+              // Check if any key indicates multipart
+              if (content.keys.any((k) => k.toString().contains('multipart'))) {
+                isMultipart = true;
+              }
+            }
+            if (selectedContent is Map) {
+              schemaMap = selectedContent['schema'] as Map?;
             }
           }
           if (schemaMap != null) {
@@ -367,12 +382,21 @@ String generateClient({
                 final propName = propEntry.key as String;
                 final propSchema = propEntry.value;
                 final isReq = requiredSet.contains(propName);
+                // binary format fields → Uint8List for file uploads
+                String bodyDartType;
+                if (propSchema is Map &&
+                    propSchema['type'] == 'string' &&
+                    propSchema['format'] == 'binary') {
+                  bodyDartType = isReq ? 'List<int>' : 'List<int>?';
+                } else {
+                  bodyDartType = openApiTypeToDart(propSchema, nullable: !isReq, rootSchema: schema);
+                }
                 bodyParams.add(Param(
                   name: propName,
                   dartName: safeDartName(toSnakeCamel(propName)),
-                  dartType: openApiTypeToDart(propSchema, nullable: !isReq, rootSchema: schema),
+                  dartType: bodyDartType,
                   required: isReq,
-                  location: 'body',
+                  location: isMultipart ? 'multipart' : 'body',
                   description: propSchema is Map ? propSchema['description']?.toString() : null,
                 ));
               }
@@ -414,12 +438,11 @@ String generateClient({
         RegExp(r'\{(\w+)\}'),
         (m) {
           final varName = m[1]!;
-          final dartName = toSnakeCamel(varName);
+          final dartName = safeDartName(toSnakeCamel(varName));
           final pathParam = params.firstWhere(
             (p) => p.name == varName || p.dartName == dartName,
             orElse: () => Param(name: varName, dartName: dartName, dartType: 'int', required: true, location: 'path'),
           );
-          // String and int/num interpolate directly; everything else needs .toString()
           final needsToString = !pathParam.dartType.startsWith('String') &&
               !pathParam.dartType.startsWith('int') &&
               !pathParam.dartType.startsWith('num');
@@ -460,25 +483,46 @@ ${entries.join('\n')}
       String bodyMapCode = '';
       String bodyArg = '';
       if (hasBody && !useRawBody) {
-        final entries = bodyParams.map((p) => p.required
-            ? "        '${p.name}': ${p.dartName},"
-            : "        if (${p.dartName} != null) '${p.name}': ${p.dartName},");
-        bodyMapCode = '''
+        if (isMultipart) {
+          // multipart/form-data — build Map<String, dynamic> for multipart method
+          final entries = bodyParams.map((p) => p.required
+              ? "        '${p.name}': ${p.dartName},"
+              : "        if (${p.dartName} != null) '${p.name}': ${p.dartName},");
+          bodyMapCode = '''
+    final multipartFields = <String, dynamic>{
+${entries.join('\n')}
+    };''';
+          bodyArg = ', fields: multipartFields';
+        } else {
+          final entries = bodyParams.map((p) => p.required
+              ? "        '${p.name}': ${p.dartName},"
+              : "        if (${p.dartName} != null) '${p.name}': ${p.dartName},");
+          bodyMapCode = '''
     final bodyMap = <String, dynamic>{
 ${entries.join('\n')}
     };''';
-        bodyArg = ', body: bodyMap';
+          bodyArg = ', body: bodyMap';
+        }
       } else if (useRawBody) {
         bodyArg = ', body: body';
       }
 
       // ── Build method call ──────────────────────────────────────────────────
       final qArg = queryParams.isNotEmpty ? ', params: _queryArgs' : '';
+      final effectiveBodyArg = isMultipart
+          ? bodyArg.replaceFirst(', body:', ', fields:')
+          : bodyArg;
       final httpCall = switch (httpMethod) {
         'get'    => "return get('$dartPath'$qArg);",
-        'post'   => "return post('$dartPath'$qArg$bodyArg);",
-        'put'    => "return put('$dartPath'$qArg$bodyArg);",
-        'patch'  => "return patch('$dartPath'$qArg$bodyArg);",
+        'post'   => isMultipart
+            ? "return multipart('POST', '$dartPath'$qArg$effectiveBodyArg);"
+            : "return post('$dartPath'$qArg$bodyArg);",
+        'put'    => isMultipart
+            ? "return multipart('PUT', '$dartPath'$qArg$effectiveBodyArg);"
+            : "return put('$dartPath'$qArg$bodyArg);",
+        'patch'  => isMultipart
+            ? "return multipart('PATCH', '$dartPath'$qArg$effectiveBodyArg);"
+            : "return patch('$dartPath'$qArg$bodyArg);",
         'delete' => "return delete('$dartPath'$qArg$bodyArg);",
         _        => "return get('$dartPath');",
       };
@@ -491,10 +535,17 @@ ${entries.join('\n')}
         final lines = text
             .split('\n')
             .map((l) => l.trim())
-            .where((l) => l.isNotEmpty)
+            // Drop lines that are markdown bullets, code fences, or just punctuation
+            .where((l) => l.isNotEmpty && !l.startsWith('```'))
             .take(maxLines)
             .toList();
-        return lines.join(' ');
+        var result = lines.join(' ');
+        // Remove characters that break Dart doc comments or string interpolation
+        result = result
+            .replaceAll('{', '(')
+            .replaceAll('}', ')')
+            .replaceAll('\$', '');
+        return result;
       }
 
       final doc = StringBuffer();
