@@ -3,7 +3,7 @@ import 'package:lzt_api/lzt_api.dart';
 void main() async {
   final forum = ForumClient(
     token: 'token',
-    proxy: 'socks5://user:pass@host:port',
+    proxy: 'socks5://user:pass@host:port', // любой прокси
   );
 
   try {
