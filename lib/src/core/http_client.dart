@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
+import 'package:socks5_proxy/socks_client.dart';
 import 'exceptions.dart';
 
 /// Retry-capable HTTP client with proxy support.
@@ -29,28 +32,51 @@ class LztHttpClient {
   }
 
   http.Client _buildClient() {
-    if (proxy != null) {
-      final proxyUri = Uri.parse(proxy!);
-      final proxyConfig = HttpClient()
-        ..findProxy = (uri) {
-          return 'PROXY ${proxyUri.host}:${proxyUri.port}';
-        };
+    if (proxy == null) return http.Client();
 
-      if (proxyUri.userInfo.isNotEmpty) {
-        final parts = proxyUri.userInfo.split(':');
-        proxyConfig.addProxyCredentials(
-          proxyUri.host,
-          proxyUri.port,
-          'Basic',
-          HttpClientBasicCredentials(parts[0], parts.length > 1 ? parts[1] : ''),
-        );
-      }
+    final proxyUri = Uri.parse(proxy!);
+    final scheme = proxyUri.scheme.toLowerCase();
+    final host = proxyUri.host.isEmpty ? 'localhost' : proxyUri.host;
+    final port = proxyUri.hasPort ? proxyUri.port : 1080;
 
-      return http.Client();
-      // Note: dart:io HttpClient proxy is set via HttpOverrides in real usage.
-      // See README for proxy configuration examples.
+    String? user;
+    String? pass;
+    if (proxyUri.userInfo.isNotEmpty) {
+      final parts = proxyUri.userInfo.split(':');
+      user = parts[0];
+      pass = parts.length > 1 ? parts[1] : null;
     }
-    return http.Client();
+
+    if (scheme == 'socks5' || scheme == 'socks4') {
+      // SOCKS4/SOCKS5 via socks5_proxy package
+      final ioClient = HttpClient();
+      SocksTCPClient.assignToHttpClient(ioClient, [
+        ProxySettings(
+          InternetAddress(host, type: InternetAddressType.any),
+          port,
+          username: user,
+          password: pass,
+        ),
+      ]);
+      return IOClient(ioClient);
+    }
+
+    // HTTP/HTTPS proxy via dart:io native support
+    final defaultPort = (scheme == 'https') ? 443 : 8080;
+    final effectivePort = proxyUri.hasPort ? port : defaultPort;
+    final ioClient = HttpClient()
+      ..findProxy = (_) => 'PROXY $host:$effectivePort';
+
+    if (user != null) {
+      ioClient.addProxyCredentials(
+        host,
+        effectivePort,
+        'Basic',
+        HttpClientBasicCredentials(user, pass ?? ''),
+      );
+    }
+
+    return IOClient(ioClient);
   }
 
   Map<String, String> get _headers => {
@@ -73,7 +99,18 @@ class LztHttpClient {
       try {
         response = await _send(method, url, body: body);
       } on SocketException catch (e) {
-        throw LztNetworkError('Network error: ${e.message}');
+        _throwNetworkError(e, url);
+        rethrow;
+      } on HttpException catch (e) {
+        throw LztNetworkError('HTTP error: ${e.message}');
+      } on HandshakeException catch (e) {
+        throw LztNetworkError('TLS handshake failed: ${e.message}');
+      } on TimeoutException {
+        throw LztTimeoutError('Request timed out: $url');
+      } on LztApiError {
+        rethrow;
+      } catch (e) {
+        throw LztNetworkError('Unexpected error: $e');
       }
 
       if (_retryStatuses.contains(response.statusCode) && attempt <= maxRetries) {
@@ -84,6 +121,27 @@ class LztHttpClient {
 
       return _handleResponse(response);
     }
+  }
+
+  /// Maps [SocketException] to a specific [LztApiError] subtype.
+  Never _throwNetworkError(SocketException e, Uri url) {
+    final msg = e.message.toLowerCase();
+    final osError = e.osError?.message.toLowerCase() ?? '';
+    final combined = '$msg $osError';
+
+    if (combined.contains('connection refused') ||
+        combined.contains('connection denied') ||
+        combined.contains('no route to host')) {
+      throw LztProxyError('Proxy connection failed (${url.host}): ${e.message}');
+    }
+
+    if (combined.contains('failed host lookup') ||
+        combined.contains('name or service not known') ||
+        combined.contains('no address associated')) {
+      throw LztNetworkError('DNS lookup failed for ${url.host}: ${e.message}');
+    }
+
+    throw LztNetworkError('Network error: ${e.message}');
   }
 
   Future<http.Response> _send(String method, Uri url, {Map<String, dynamic>? body}) {
@@ -105,18 +163,33 @@ class LztHttpClient {
   }
 
   Map<String, dynamic> _handleResponse(http.Response response) {
-    final body = response.body.isEmpty ? '{}' : response.body;
-    late Map<String, dynamic> data;
+    final rawBody = response.body.isEmpty ? '{}' : response.body;
 
+    if (response.statusCode == 407) {
+      throw const LztProxyAuthRequiredError(
+        'Proxy authentication required — check proxy credentials',
+      );
+    }
+
+    Map<String, dynamic> data;
     try {
-      data = jsonDecode(body) as Map<String, dynamic>;
-    } catch (_) {
-      throw LztApiError('Invalid JSON response: $body');
+      final decoded = jsonDecode(rawBody);
+      if (decoded is Map<String, dynamic>) {
+        data = decoded;
+      } else {
+        data = {'_raw': decoded};
+      }
+    } on FormatException catch (e) {
+      throw LztParseError(
+        'Failed to parse response JSON: ${e.message}',
+        rawBody: rawBody,
+      );
     }
 
     switch (response.statusCode) {
       case 200:
       case 201:
+      case 204:
         return data;
       case 400:
         throw LztBadRequestError(data['message']?.toString() ?? 'Bad request', data);
@@ -136,7 +209,7 @@ class LztHttpClient {
       case 503:
         throw LztServerError(response.statusCode, data['message']?.toString() ?? 'Server error');
       default:
-        throw LztApiError('Unexpected status ${response.statusCode}: $body');
+        throw LztApiError('Unexpected status ${response.statusCode}: $rawBody');
     }
   }
 
@@ -174,7 +247,16 @@ class LztHttpClient {
 
         response = await _inner.send(request).then(http.Response.fromStream);
       } on SocketException catch (e) {
-        throw LztNetworkError('Network error: \${e.message}');
+        _throwNetworkError(e, url);
+        rethrow;
+      } on HttpException catch (e) {
+        throw LztNetworkError('HTTP error: ${e.message}');
+      } on TimeoutException {
+        throw LztTimeoutError('Request timed out: $url');
+      } on LztApiError {
+        rethrow;
+      } catch (e) {
+        throw LztNetworkError('Unexpected error: $e');
       }
 
       if (_retryStatuses.contains(response.statusCode) && attempt <= maxRetries) {

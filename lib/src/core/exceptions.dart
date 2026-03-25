@@ -15,6 +15,40 @@ class LztNetworkError extends LztApiError {
   String toString() => 'LztNetworkError: $message';
 }
 
+/// Raised when proxy connection is refused or times out.
+class LztProxyError extends LztApiError {
+  const LztProxyError(super.message);
+
+  @override
+  String toString() => 'LztProxyError: $message';
+}
+
+/// Raised when proxy requires authentication (407) or credentials are wrong.
+class LztProxyAuthError extends LztProxyError {
+  const LztProxyAuthError(super.message);
+
+  @override
+  String toString() => 'LztProxyAuthError: $message';
+}
+
+/// Raised when the response body is not valid JSON.
+class LztParseError extends LztApiError {
+  /// Raw response body that failed to parse.
+  final String rawBody;
+  const LztParseError(super.message, {required this.rawBody});
+
+  @override
+  String toString() => 'LztParseError: $message';
+}
+
+/// Raised on connection timeout.
+class LztTimeoutError extends LztApiError {
+  const LztTimeoutError(super.message);
+
+  @override
+  String toString() => 'LztTimeoutError: $message';
+}
+
 /// Raised on HTTP 400 Bad Request.
 class LztBadRequestError extends LztApiError {
   final Map<String, dynamic>? details;
@@ -56,8 +90,17 @@ class LztRateLimitError extends LztApiError {
   const LztRateLimitError(super.message, {this.retryAfter});
 
   @override
-  String toString() =>
-      'LztRateLimitError: $message${retryAfter != null ? ' (retry after ${retryAfter}s)' : ''}';
+  String toString() {
+    if (retryAfter != null) {
+      return 'LztRateLimitError: $message (retry after ${retryAfter}s)';
+    }
+    return 'LztRateLimitError: $message';
+  }
+}
+
+/// Raised on HTTP 407 Proxy Authentication Required.
+class LztProxyAuthRequiredError extends LztProxyAuthError {
+  const LztProxyAuthRequiredError(super.message);
 }
 
 /// Raised on HTTP 502/503 server errors.
