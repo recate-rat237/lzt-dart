@@ -88,8 +88,6 @@ dart run codegen/generate.dart \
   --base-url https://api.lzt.market
 ```
 
-The CI pipeline will fail if the generated files are out of date with the schemas.
-
 ## Features
 
 - Async via Dart's native `async/await`
