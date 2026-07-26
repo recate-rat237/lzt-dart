@@ -1,6 +1,6 @@
 name: lzt_api
 description: Dart API wrapper for Lolzteam Forum & Market. Supports async. Auto-generated from OpenAPI schemas.
-version: 0.1.0
+version: 1.0.1
 homepage: https://github.com/recate-rat237/lzt-dart
 repository: https://github.com/recate-rat237/lzt-dart
 issue_tracker: https://github.com/recate-rat237/lzt-dart/issues
